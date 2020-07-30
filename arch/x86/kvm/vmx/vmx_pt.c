@@ -179,7 +179,7 @@ static void topa_reset(struct vcpu_vmx_pt *vmx_pt)
 {
 #ifdef DEBUG
 	if (vmx_pt_get_data_size(vmx_pt) >= TOPA_MAIN_SIZE)
-		printk(KERN_WARNING "Main TOPA buffer exhausted! %x >= %x?\n",
+		printk(KERN_WARNING "Main TOPA buffer exhausted! %lx >= %x?\n",
 			   vmx_pt_get_data_size(vmx_pt), TOPA_MAIN_SIZE+TOPA_FALLBACK_SIZE);
 #endif
 

@@ -7695,6 +7695,7 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 	/* kAFL Hypercall interface */
 	if (nr == HYPERCALL_KAFL_RAX_ID) {
 		int r = 0;
+		vcpu->run->hypercall.longmode = op_64_bit;
 		switch(a0){
 			case (KVM_EXIT_KAFL_ACQUIRE-KAFL_EXIT_OFFSET):
 				vcpu->run->exit_reason = KVM_EXIT_KAFL_ACQUIRE;
