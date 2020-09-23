@@ -3971,6 +3971,16 @@ static int svm_vm_init(struct kvm *kvm)
 	return 0;
 }
 
+#ifdef CONFIG_KVM_VMX_PT
+static int setup_trace_fd_stub(struct kvm_vcpu *vcpu){
+	return -EINVAL;
+}
+static int vmx_pt_is_enabled(void){
+	/* AMD CPUs do not support Intel PT */
+	return -EINVAL;
+}
+#endif
+
 static struct kvm_x86_ops svm_x86_ops __initdata = {
 	.hardware_unsetup = svm_hardware_teardown,
 	.hardware_enable = svm_hardware_enable,
@@ -4071,6 +4081,11 @@ static struct kvm_x86_ops svm_x86_ops __initdata = {
 
 	.pmu_ops = &amd_pmu_ops,
 	.nested_ops = &svm_nested_ops,
+
+#ifdef CONFIG_KVM_VMX_PT
+	.setup_trace_fd = setup_trace_fd_stub,
+	.vmx_pt_enabled = vmx_pt_is_enabled,
+#endif
 
 	.deliver_posted_interrupt = svm_deliver_avic_intr,
 	.dy_apicv_has_pending_interrupt = svm_dy_apicv_has_pending_interrupt,

@@ -3630,6 +3630,12 @@ long kvm_arch_dev_ioctl(struct file *filp,
 	case KVM_GET_MSRS:
 		r = msr_io(NULL, argp, do_get_msr_feature, 1);
 		break;
+#ifdef CONFIG_KVM_VMX_PT
+	case KVM_VMX_PT_SUPPORTED: {
+		r = kvm_x86_ops.vmx_pt_enabled();
+		break;
+	}
+#endif
 	default:
 		r = -EINVAL;
 		break;
@@ -4718,6 +4724,12 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 		r = 0;
 		break;
 	}
+#ifdef CONFIG_KVM_VMX_PT
+	case KVM_VMX_PT_SETUP_FD: {
+		r = kvm_x86_ops.setup_trace_fd(vcpu);
+		break;
+	}
+#endif
 	default:
 		r = -EINVAL;
 	}
@@ -7648,6 +7660,7 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 {
 	unsigned long nr, a0, a1, a2, a3, ret;
 	int op_64_bit;
+	struct kvm *kvm = vcpu->kvm;
 
 	if (kvm_hv_hypercall_enabled(vcpu->kvm))
 		return kvm_hv_hypercall(vcpu);
@@ -7668,6 +7681,106 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 		a2 &= 0xFFFFFFFF;
 		a3 &= 0xFFFFFFFF;
 	}
+
+#ifdef CONFIG_KVM_VMX_PT
+	/* kAFL Hypercall Interface (ring 0) */
+	if(kvm_x86_ops.get_cpl(vcpu) == 0) {
+		if(kvm->arch.printk_addr && kvm->arch.printk_addr == kvm_rip_read(vcpu)){
+			printk("KVM_EXIT_KAFL_PRINTK\n");
+			vcpu->run->exit_reason = KVM_EXIT_KAFL_PRINTK;
+			return 0;
+		}
+	}
+
+	/* kAFL Hypercall interface */
+	if (nr == HYPERCALL_KAFL_RAX_ID) {
+		int r = 0;
+		switch(a0){
+			case (KVM_EXIT_KAFL_ACQUIRE-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_ACQUIRE;
+				break;
+			case (KVM_EXIT_KAFL_GET_PAYLOAD-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_GET_PAYLOAD;
+				vcpu->run->hypercall.args[0] = a1;
+				break;
+			case (KVM_EXIT_KAFL_GET_PROGRAM-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_GET_PROGRAM;
+				vcpu->run->hypercall.args[0] = a1;
+				break;
+			case (KVM_EXIT_KAFL_GET_ARGV-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_GET_ARGV;
+				vcpu->run->hypercall.args[0] = a1;
+				break;
+			case (KVM_EXIT_KAFL_RELEASE-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_RELEASE;
+				break;
+			case (KVM_EXIT_KAFL_SUBMIT_CR3-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_SUBMIT_CR3;
+				vcpu->run->hypercall.args[0] = kvm_read_cr3(vcpu);
+				break;
+			case (KVM_EXIT_KAFL_SUBMIT_PANIC-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_SUBMIT_PANIC;
+				vcpu->run->hypercall.args[0] = a1;
+				break;
+			case (KVM_EXIT_KAFL_SUBMIT_KASAN-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_SUBMIT_KASAN;
+				vcpu->run->hypercall.args[0] = a1;
+				break;
+			case (KVM_EXIT_KAFL_PANIC-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_PANIC;
+				vcpu->run->hypercall.args[0] = a1;
+				break;
+			case (KVM_EXIT_KAFL_KASAN-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_KASAN;
+				vcpu->run->hypercall.args[0] = a1;
+				break;
+			case (KVM_EXIT_KAFL_TIMEOUT-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_TIMEOUT;
+				vcpu->run->hypercall.args[0] = 0;
+				break;
+			case (KVM_EXIT_KAFL_LOCK-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_LOCK;
+				break;
+			case (KVM_EXIT_KAFL_INFO-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_INFO;
+				vcpu->run->hypercall.args[0] = a1;
+				break;
+			case (KVM_EXIT_KAFL_NEXT_PAYLOAD-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_NEXT_PAYLOAD;
+				break;
+			case (KVM_EXIT_KAFL_PRINTF-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_PRINTF;
+				vcpu->run->hypercall.args[0] = a1;
+				break;
+			case (KVM_EXIT_KAFL_PRINTK_ADDR-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_PRINTK_ADDR;
+				kvm->arch.printk_addr = a1 + 0x3; /* 3 bytes vmcall offset */
+				vcpu->run->hypercall.args[0] = a1;
+				break;
+				/* user space only exit reasons */
+			case (KVM_EXIT_KAFL_USER_RANGE_ADVISE-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_USER_RANGE_ADVISE;
+				vcpu->run->hypercall.args[0] = a1;
+				break;
+			case (KVM_EXIT_KAFL_USER_SUBMIT_MODE-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_USER_SUBMIT_MODE;
+				vcpu->run->hypercall.args[0] = a1;
+				break;
+			case (KVM_EXIT_KAFL_USER_FAST_ACQUIRE-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_USER_FAST_ACQUIRE;
+				vcpu->run->hypercall.args[0] = kvm_read_cr3(vcpu);
+				break;
+			case (KVM_EXIT_KAFL_USER_ABORT-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_USER_ABORT;
+				break;
+			default:
+				r = -KVM_EPERM;
+				break;
+		}
+		kvm_skip_emulated_instruction(vcpu);
+		return r;
+	}
+#endif
 
 	if (kvm_x86_ops.get_cpl(vcpu) != 0) {
 		ret = -KVM_EPERM;
@@ -7703,7 +7816,6 @@ out:
 	if (!op_64_bit)
 		ret = (u32)ret;
 	kvm_rax_write(vcpu, ret);
-
 	++vcpu->stat.hypercalls;
 	return kvm_skip_emulated_instruction(vcpu);
 }
@@ -9976,6 +10088,10 @@ int __x86_set_memory_region(struct kvm *kvm, int id, gpa_t gpa, u32 size)
 
 	if (!size)
 		vm_munmap(hva, old_npages * PAGE_SIZE);
+
+#ifdef CONFIG_KVM_VMX_PT
+	kvm->arch.printk_addr = 0;
+#endif
 
 	return 0;
 }

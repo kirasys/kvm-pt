@@ -996,6 +996,10 @@ struct kvm_arch {
 
 	bool disabled_lapic_found;
 
+#ifdef CONFIG_KVM_VMX_PT
+	uint64_t printk_addr;
+#endif
+
 	bool x2apic_format;
 	bool x2apic_broadcast_quirk_disabled;
 
@@ -1243,6 +1247,12 @@ struct kvm_x86_ops {
 
 	int (*update_pi_irte)(struct kvm *kvm, unsigned int host_irq,
 			      uint32_t guest_irq, bool set);
+
+#ifdef CONFIG_KVM_VMX_PT
+	int (*setup_trace_fd)(struct kvm_vcpu *vcpu);
+	int (*vmx_pt_enabled)(void);
+#endif
+
 	void (*apicv_post_state_restore)(struct kvm_vcpu *vcpu);
 	bool (*dy_apicv_has_pending_interrupt)(struct kvm_vcpu *vcpu);
 

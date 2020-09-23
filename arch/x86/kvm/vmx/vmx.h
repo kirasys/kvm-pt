@@ -231,6 +231,10 @@ struct vcpu_vmx {
 
 	u32 secondary_exec_control;
 
+#ifdef CONFIG_KVM_VMX_PT
+	struct vcpu_vmx_pt*   vmx_pt_config;
+#endif
+
 	/*
 	 * loaded_vmcs points to the VMCS currently used in this vcpu. For a
 	 * non-nested (L1) guest, it always points to vmcs01. For a nested
@@ -422,9 +426,10 @@ static inline u8 vmx_get_rvi(void)
 	return vmcs_read16(GUEST_INTR_STATUS) & 0xff;
 }
 
-#define BUILD_CONTROLS_SHADOW(lname, uname)				    \
+#define BUILD_CONTROLS_SHADOW(lname, uname, mask)				    \
 static inline void lname##_controls_set(struct vcpu_vmx *vmx, u32 val)	    \
 {									    \
+	val = val | mask;  \
 	if (vmx->loaded_vmcs->controls_shadow.lname != val) {		    \
 		vmcs_write32(uname, val);				    \
 		vmx->loaded_vmcs->controls_shadow.lname = val;		    \
@@ -442,11 +447,16 @@ static inline void lname##_controls_clearbit(struct vcpu_vmx *vmx, u32 val) \
 {									    \
 	lname##_controls_set(vmx, lname##_controls_get(vmx) & ~val);	    \
 }
-BUILD_CONTROLS_SHADOW(vm_entry, VM_ENTRY_CONTROLS)
-BUILD_CONTROLS_SHADOW(vm_exit, VM_EXIT_CONTROLS)
-BUILD_CONTROLS_SHADOW(pin, PIN_BASED_VM_EXEC_CONTROL)
-BUILD_CONTROLS_SHADOW(exec, CPU_BASED_VM_EXEC_CONTROL)
-BUILD_CONTROLS_SHADOW(secondary_exec, SECONDARY_VM_EXEC_CONTROL)
+#ifdef CONFIG_KVM_VMX_PT
+BUILD_CONTROLS_SHADOW(vm_entry, VM_ENTRY_CONTROLS, 0x20000ULL)
+BUILD_CONTROLS_SHADOW(vm_exit, VM_EXIT_CONTROLS, 0x1000000ULL)
+#else
+BUILD_CONTROLS_SHADOW(vm_entry, VM_ENTRY_CONTROLS, 0x0ULL)
+BUILD_CONTROLS_SHADOW(vm_exit, VM_EXIT_CONTROLS, 0x0ULL)
+#endif
+BUILD_CONTROLS_SHADOW(pin, PIN_BASED_VM_EXEC_CONTROL, 0x0ULL)
+BUILD_CONTROLS_SHADOW(exec, CPU_BASED_VM_EXEC_CONTROL, 0x0ULL)
+BUILD_CONTROLS_SHADOW(secondary_exec, SECONDARY_VM_EXEC_CONTROL, 0x0ULL)
 
 static inline void vmx_register_cache_reset(struct kvm_vcpu *vcpu)
 {
@@ -551,5 +561,10 @@ static inline bool vmx_has_waitpkg(struct vcpu_vmx *vmx)
 }
 
 void dump_vmcs(void);
+
+#ifdef CONFIG_KVM_VMX_PT
+void add_atomic_switch_msr(struct vcpu_vmx *vmx, unsigned msr,
+				u64 guest_val, u64 host_val, bool entry_only);
+#endif
 
 #endif /* __KVM_X86_VMX_H */

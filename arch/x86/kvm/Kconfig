@@ -107,4 +107,10 @@ config KVM_MMU_AUDIT
 	 This option adds a R/W kVM module parameter 'mmu_audit', which allows
 	 auditing of KVM MMU events at runtime.
 
+config KVM_VMX_PT
+	bool "KVM extension for Intel Processor Trace"
+	depends on KVM_INTEL
+	---help---
+	  Provides support for Intel Processor Trace in vmx mode.
+
 endif # VIRTUALIZATION

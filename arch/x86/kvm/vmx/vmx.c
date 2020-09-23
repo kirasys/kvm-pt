@@ -63,6 +63,10 @@
 #include "vmx.h"
 #include "x86.h"
 
+#ifdef CONFIG_KVM_VMX_PT
+#include "vmx_pt.h"
+#endif
+
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
 
@@ -887,7 +891,7 @@ static void add_atomic_switch_msr_special(struct vcpu_vmx *vmx,
 	vm_exit_controls_setbit(vmx, exit);
 }
 
-static void add_atomic_switch_msr(struct vcpu_vmx *vmx, unsigned msr,
+void add_atomic_switch_msr(struct vcpu_vmx *vmx, unsigned msr,
 				  u64 guest_val, u64 host_val, bool entry_only)
 {
 	int i, j = 0;
@@ -2586,10 +2590,16 @@ static __init int setup_vmcs_config(struct vmcs_config *vmcs_conf,
 	vmcs_conf->revision_id = vmx_msr_low;
 
 	vmcs_conf->pin_based_exec_ctrl = _pin_based_exec_control;
-	vmcs_conf->cpu_based_exec_ctrl = _cpu_based_exec_control;
 	vmcs_conf->cpu_based_2nd_exec_ctrl = _cpu_based_2nd_exec_control;
+#ifdef CONFIG_KVM_VMX_PT
+	vmcs_conf->cpu_based_exec_ctrl = _cpu_based_exec_control | 0x80000;
+	vmcs_conf->vmexit_ctrl         = _vmexit_control | 0x1000000;
+	vmcs_conf->vmentry_ctrl        = _vmentry_control | 0x20000;
+#else
+	vmcs_conf->cpu_based_exec_ctrl = _cpu_based_exec_control;
 	vmcs_conf->vmexit_ctrl         = _vmexit_control;
 	vmcs_conf->vmentry_ctrl        = _vmentry_control;
+#endif
 
 	if (static_branch_unlikely(&enable_evmcs))
 		evmcs_sanitize_exec_ctrls(vmcs_conf);
@@ -5661,6 +5671,15 @@ static int handle_encls(struct kvm_vcpu *vcpu)
 	return 1;
 }
 
+static int handle_topa_main_full(struct kvm_vcpu *vcpu)
+{
+	/*
+	 * Exit to userspace for buffer parsing & reset
+	 */
+	vcpu->run->exit_reason = KVM_EXIT_KAFL_TOPA_MAIN_FULL;
+	return 0;
+}
+
 /*
  * The exit handlers return 1 if the exit was handled fully and guest execution
  * may resume.  Otherwise they set the kvm_run parameter to indicate what needs
@@ -5717,6 +5736,7 @@ static int (*kvm_vmx_exit_handlers[])(struct kvm_vcpu *vcpu) = {
 	[EXIT_REASON_VMFUNC]		      = handle_vmx_instruction,
 	[EXIT_REASON_PREEMPTION_TIMER]	      = handle_preemption_timer,
 	[EXIT_REASON_ENCLS]		      = handle_encls,
+	[EXIT_REASON_TOPA_FULL]        = handle_topa_main_full,
 };
 
 static const int kvm_vmx_max_exit_handlers =
@@ -6449,11 +6469,21 @@ STACK_FRAME_NON_STANDARD(handle_external_interrupt_irqoff);
 static void vmx_handle_exit_irqoff(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
+#ifdef CONFIG_KVM_VMX_PT
+	bool topa_full = vmx_pt_vmexit(vmx->vmx_pt_config);
+#endif
 
 	if (vmx->exit_reason == EXIT_REASON_EXTERNAL_INTERRUPT)
 		handle_external_interrupt_irqoff(vcpu);
 	else if (vmx->exit_reason == EXIT_REASON_EXCEPTION_NMI)
 		handle_exception_nmi_irqoff(vmx);
+
+#ifdef CONFIG_KVM_VMX_PT
+	// VMX-PT: Check TOPA status and maybe override exit_reason for user exit
+	if (topa_full) {
+		vmx->exit_reason = EXIT_REASON_TOPA_FULL;
+	}
+#endif
 }
 
 static bool vmx_has_emulated_msr(u32 index)
@@ -6669,6 +6699,10 @@ reenter_guest:
 	if (vmx->emulation_required)
 		return EXIT_FASTPATH_NONE;
 
+#ifdef CONFIG_KVM_VMX_PT
+	vmx_pt_vmentry(vmx->vmx_pt_config);
+#endif
+
 	if (vmx->ple_window_dirty) {
 		vmx->ple_window_dirty = false;
 		vmcs_write32(PLE_WINDOW, vmx->ple_window);
@@ -6844,6 +6878,10 @@ static void vmx_free_vcpu(struct kvm_vcpu *vcpu)
 	free_vpid(vmx->vpid);
 	nested_vmx_free_vcpu(vcpu);
 	free_loaded_vmcs(vmx->loaded_vmcs);
+
+#ifdef CONFIG_KVM_VMX_PT
+	vmx_pt_destroy(vmx, &(vmx->vmx_pt_config));
+#endif
 }
 
 static int vmx_create_vcpu(struct kvm_vcpu *vcpu)
@@ -6960,6 +6998,14 @@ static int vmx_create_vcpu(struct kvm_vcpu *vcpu)
 	vmx->pi_desc.sn = 1;
 
 	vmx->ept_pointer = INVALID_PAGE;
+
+#ifdef CONFIG_KVM_VMX_PT
+	err = vmx_pt_setup(vmx, &(vmx->vmx_pt_config));
+	if (err) {
+		printk(KERN_ERR "[VMX-PT] Error in vmx_pt_setup(). Exit.\n");
+		goto free_vmcs;
+	}
+#endif
 
 	return 0;
 
@@ -7841,6 +7887,16 @@ static bool vmx_check_apicv_inhibit_reasons(ulong bit)
 	return supported & BIT(bit);
 }
 
+#ifdef CONFIG_KVM_VMX_PT
+static int vmx_pt_setup_fd(struct kvm_vcpu *vcpu){
+	return vmx_pt_create_fd(to_vmx(vcpu)->vmx_pt_config);
+}
+
+static int vmx_pt_is_enabled(void){
+	return vmx_pt_enabled();
+}
+#endif
+
 static struct kvm_x86_ops vmx_x86_ops __initdata = {
 	.hardware_unsetup = hardware_unsetup,
 
@@ -7953,6 +8009,11 @@ static struct kvm_x86_ops vmx_x86_ops __initdata = {
 	.nested_ops = &vmx_nested_ops,
 
 	.update_pi_irte = vmx_update_pi_irte,
+
+#ifdef CONFIG_KVM_VMX_PT
+	.setup_trace_fd = vmx_pt_setup_fd,
+	.vmx_pt_enabled = vmx_pt_is_enabled,
+#endif
 
 #ifdef CONFIG_X86_64
 	.set_hv_timer = vmx_set_hv_timer,
@@ -8170,6 +8231,10 @@ static void vmx_exit(void)
 	synchronize_rcu();
 #endif
 
+#ifdef CONFIG_KVM_VMX_PT
+	vmx_pt_exit();
+#endif
+
 	kvm_exit();
 
 #if IS_ENABLED(CONFIG_HYPERV)
@@ -8266,6 +8331,10 @@ static int __init vmx_init(void)
 			   crash_vmclear_local_loaded_vmcss);
 #endif
 	vmx_check_vmcs12_offsets();
+
+#ifdef CONFIG_KVM_VMX_PT
+	vmx_pt_init();
+#endif
 
 	return 0;
 }
