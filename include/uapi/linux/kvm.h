@@ -231,7 +231,7 @@ struct kvm_hyperv_exit {
 #define KVM_EXIT_KAFL_SUBMIT_KASAN			107
 #define KVM_EXIT_KAFL_PANIC					108
 #define KVM_EXIT_KAFL_KASAN					109
-#define KVM_EXIT_KAFL_LOCK					110
+#define KVM_EXIT_KAFL_SNAPSHOT				110
 #define KVM_EXIT_KAFL_INFO					111
 #define KVM_EXIT_KAFL_NEXT_PAYLOAD			112
 #define KVM_EXIT_KAFL_PRINTF				113
@@ -247,6 +247,9 @@ struct kvm_hyperv_exit {
 #define KVM_EXIT_KAFL_TOPA_MAIN_FULL		119
 #define KVM_EXIT_KAFL_USER_ABORT			120
 #define KVM_EXIT_KAFL_TIMEOUT				121
+
+/* kirasys */
+#define KVM_EXIT_KAFL_LOCK					122
 
 
 #define KVM_EXIT_UNKNOWN          0

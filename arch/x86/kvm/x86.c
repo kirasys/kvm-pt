@@ -7739,8 +7739,8 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 				vcpu->run->exit_reason = KVM_EXIT_KAFL_TIMEOUT;
 				vcpu->run->hypercall.args[0] = 0;
 				break;
-			case (KVM_EXIT_KAFL_LOCK-KAFL_EXIT_OFFSET):
-				vcpu->run->exit_reason = KVM_EXIT_KAFL_LOCK;
+			case (KVM_EXIT_KAFL_SNAPSHOT-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_SNAPSHOT;
 				break;
 			case (KVM_EXIT_KAFL_INFO-KAFL_EXIT_OFFSET):
 				vcpu->run->exit_reason = KVM_EXIT_KAFL_INFO;
@@ -7773,6 +7773,9 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 				break;
 			case (KVM_EXIT_KAFL_USER_ABORT-KAFL_EXIT_OFFSET):
 				vcpu->run->exit_reason = KVM_EXIT_KAFL_USER_ABORT;
+				break;
+			case (KVM_EXIT_KAFL_LOCK-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_LOCK;
 				break;
 			default:
 				r = -KVM_EPERM;
