@@ -250,7 +250,7 @@ struct kvm_hyperv_exit {
 
 /* kirasys */
 #define KVM_EXIT_KAFL_LOCK					122
-
+#define KVM_EXIT_KAFL_IP_FILTER				123
 
 #define KVM_EXIT_UNKNOWN          0
 #define KVM_EXIT_EXCEPTION        1

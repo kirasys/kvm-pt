@@ -7774,8 +7774,14 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 			case (KVM_EXIT_KAFL_USER_ABORT-KAFL_EXIT_OFFSET):
 				vcpu->run->exit_reason = KVM_EXIT_KAFL_USER_ABORT;
 				break;
+			/* kirasys */
 			case (KVM_EXIT_KAFL_LOCK-KAFL_EXIT_OFFSET):
 				vcpu->run->exit_reason = KVM_EXIT_KAFL_LOCK;
+				break;
+			case (KVM_EXIT_KAFL_IP_FILTER-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_IP_FILTER;
+				vcpu->run->hypercall.args[0] = a1;
+				vcpu->run->hypercall.args[1] = a2;
 				break;
 			default:
 				r = -KVM_EPERM;
