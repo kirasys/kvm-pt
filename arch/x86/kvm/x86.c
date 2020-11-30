@@ -7783,6 +7783,12 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 				vcpu->run->hypercall.args[0] = a1;
 				vcpu->run->hypercall.args[1] = a2;
 				break;
+			case (KVM_EXIT_KAFL_MEMWRITE-KAFL_EXIT_OFFSET):
+				vcpu->run->exit_reason = KVM_EXIT_KAFL_MEMWRITE;
+				vcpu->run->hypercall.args[0] = a1;
+				vcpu->run->hypercall.args[1] = a2;
+				vcpu->run->hypercall.args[2] = a3;
+				break;
 			default:
 				r = -KVM_EPERM;
 				break;
